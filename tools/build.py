@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from collections import OrderedDict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -80,6 +81,37 @@ def build_sections(entries: Iterable[Tuple[str, Dict[str, str]]]) -> List[Dict[s
     ]
 
 
+def determine_generated_timestamp(tex_files: Iterable[Path]) -> str:
+    """Return a stable timestamp for generated artifacts."""
+    git_args = [
+        "git",
+        "-C",
+        str(ROOT),
+        "log",
+        "-1",
+        "--format=%cI",
+        "--",
+        "tex",
+    ]
+    try:
+        result = subprocess.run(
+            git_args,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        result = None
+
+    if result:
+        commit_timestamp = result.stdout.strip()
+        if commit_timestamp:
+            return commit_timestamp
+
+    latest_mtime = max(tex_path.stat().st_mtime for tex_path in tex_files)
+    return datetime.fromtimestamp(latest_mtime, tz=timezone.utc).isoformat()
+
+
 def generate_indices() -> None:
     TEX_DIR.mkdir(parents=True, exist_ok=True)
     ASSETS_DIR.mkdir(parents=True, exist_ok=True)
@@ -90,8 +122,7 @@ def generate_indices() -> None:
 
     entries: List[Tuple[str, Dict[str, str]]] = []
     search_entries: List[Dict[str, str]] = []
-    latest_mtime = max(tex_path.stat().st_mtime for tex_path in tex_files)
-    timestamp = datetime.fromtimestamp(latest_mtime, tz=timezone.utc).isoformat()
+    timestamp = determine_generated_timestamp(tex_files)
 
     for tex_path in tex_files:
         content = tex_path.read_text(encoding="utf-8")
