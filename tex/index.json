@@ -1,0 +1,29 @@
+{
+  "generated_at": "2025-10-12T02:40:08.681535+00:00",
+  "default": "example",
+  "sections": [
+    {
+      "name": "Algorithms",
+      "items": [
+        {
+          "title": "Interview Prep Guide",
+          "slug": "example",
+          "path": "tex/example.tex",
+          "summary": "article Interview Prep Guide Welcome! This site renders directly in your browser. Topics - Algorithms - Systems - Behavioral"
+        }
+      ]
+    },
+    {
+      "name": "Data Structures",
+      "items": []
+    },
+    {
+      "name": "Systems",
+      "items": []
+    },
+    {
+      "name": "Behavioral",
+      "items": []
+    }
+  ]
+}

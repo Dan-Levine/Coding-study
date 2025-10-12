@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Interview Prep Guide</title>
+    <link rel="stylesheet" href="assets/site.css" />
+    <script type="module">
+      import { LaTeXJSComponent } from "https://cdn.jsdelivr.net/npm/latex.js/dist/latex.mjs";
+      customElements.define("latex-js", LaTeXJSComponent);
+    </script>
+  </head>
+  <body>
+    <div class="app">
+      <aside id="sidebar" class="sidebar">
+        <header class="sidebar__header">
+          <button id="sidebarToggle" class="sidebar__toggle" aria-label="Toggle navigation">☰</button>
+          <h1 class="sidebar__title">Interview Prep Guide</h1>
+        </header>
+        <nav id="nav" class="sidebar__nav" aria-label="Primary navigation"></nav>
+      </aside>
+      <main id="content" class="content" tabindex="-1">
+        <div id="status" role="status" aria-live="polite" class="status"></div>
+        <latex-js id="viewer" baseURL="./"></latex-js>
+      </main>
+    </div>
+    <template id="nav-section-template">
+      <section class="nav-section">
+        <button class="nav-section__title" type="button"></button>
+        <ul class="nav-section__list"></ul>
+      </section>
+    </template>
+    <script>
+      const manifestUrl = "tex/index.json";
+      const navElement = document.getElementById("nav");
+      const viewer = document.getElementById("viewer");
+      const statusElement = document.getElementById("status");
+      const sidebar = document.getElementById("sidebar");
+      const sidebarToggle = document.getElementById("sidebarToggle");
+      const navSectionTemplate = document.getElementById("nav-section-template");
+
+      let manifest = null;
+      let currentSlug = null;
+
+      sidebarToggle.addEventListener("click", () => {
+        sidebar.classList.toggle("sidebar--open");
+      });
+
+      function getSlugFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        return params.get("file");
+      }
+
+      function updateUrl(slug, { replace = false } = {}) {
+        const params = new URLSearchParams(window.location.search);
+        params.set("file", slug);
+        const newUrl = `${window.location.pathname}?${params.toString()}`;
+        const method = replace ? "replaceState" : "pushState";
+        history[method]({ slug }, "", newUrl);
+      }
+
+      function renderLatex(texContent) {
+        viewer.replaceChildren();
+        viewer.textContent = texContent;
+        if (typeof viewer.render === "function") {
+          viewer.render();
+        }
+      }
+
+      function setStatus(message, isError = false) {
+        statusElement.textContent = message;
+        statusElement.classList.toggle("status--error", isError);
+      }
+
+      function clearStatus() {
+        statusElement.textContent = "";
+        statusElement.classList.remove("status--error");
+      }
+
+      function buildNav() {
+        navElement.innerHTML = "";
+        if (!manifest || !Array.isArray(manifest.sections)) {
+          setStatus("Navigation data is unavailable.", true);
+          return;
+        }
+
+        manifest.sections.forEach((section) => {
+          const sectionNode = navSectionTemplate.content
+            .firstElementChild.cloneNode(true);
+          const titleButton = sectionNode.querySelector(".nav-section__title");
+          const listElement = sectionNode.querySelector(".nav-section__list");
+
+          titleButton.textContent = section.name;
+          titleButton.setAttribute("aria-expanded", "true");
+          titleButton.addEventListener("click", () => {
+            sectionNode.classList.toggle("nav-section--collapsed");
+            const isCollapsed = sectionNode.classList.contains(
+              "nav-section--collapsed",
+            );
+            titleButton.setAttribute("aria-expanded", String(!isCollapsed));
+          });
+
+          if (!Array.isArray(section.items) || section.items.length === 0) {
+            const emptyItem = document.createElement("li");
+            emptyItem.className = "nav-section__empty";
+            emptyItem.textContent = "No topics yet.";
+            listElement.appendChild(emptyItem);
+          } else {
+            section.items.forEach((item) => {
+              const itemElement = document.createElement("li");
+              const link = document.createElement("a");
+              link.href = `?file=${encodeURIComponent(item.slug)}`;
+              link.textContent = item.title;
+              link.dataset.slug = item.slug;
+              link.addEventListener("click", (event) => {
+                event.preventDefault();
+                loadSlug(item.slug);
+                sidebar.classList.remove("sidebar--open");
+              });
+              itemElement.appendChild(link);
+              listElement.appendChild(itemElement);
+            });
+          }
+
+          navElement.appendChild(sectionNode);
+        });
+
+        highlightActiveLink();
+      }
+
+      function highlightActiveLink() {
+        const links = navElement.querySelectorAll("a[data-slug]");
+        links.forEach((link) => {
+          const isActive = link.dataset.slug === currentSlug;
+          link.classList.toggle("is-active", isActive);
+          link.setAttribute("aria-current", isActive ? "page" : "false");
+        });
+      }
+
+      function getAllItems() {
+        if (!manifest) {
+          return [];
+        }
+        return manifest.sections.flatMap((section) => section.items || []);
+      }
+
+      async function loadSlug(
+        slug,
+        { replaceHistory = false, allowFallback = true } = {},
+      ) {
+        if (slug === currentSlug && !replaceHistory) {
+          highlightActiveLink();
+          return;
+        }
+        if (!manifest) {
+          setStatus("Manifest has not been loaded yet.", true);
+          return;
+        }
+        const allItems = getAllItems();
+        if (allItems.length === 0) {
+          setStatus("No topics available.", true);
+          return;
+        }
+
+        const entry = allItems.find((item) => item.slug === slug);
+
+        if (!entry) {
+          if (allowFallback) {
+            const fallbackSlug =
+              (manifest.default && manifest.default !== slug
+                ? manifest.default
+                : allItems[0]?.slug) || null;
+            if (fallbackSlug && fallbackSlug !== slug) {
+              setStatus(
+                `Topic not found: ${slug}. Loading ${fallbackSlug} instead…`,
+              );
+              await loadSlug(fallbackSlug, {
+                replaceHistory: true,
+                allowFallback: false,
+              });
+              return;
+            }
+          }
+          setStatus(`Topic not found: ${slug}`, true);
+          return;
+        }
+
+        setStatus(`Loading ${entry.title}…`);
+        try {
+          const response = await fetch(entry.path);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch ${entry.path}: ${response.status}`);
+          }
+          const texContent = await response.text();
+          renderLatex(texContent);
+          currentSlug = slug;
+          updateUrl(slug, { replace: replaceHistory });
+          document.title = `${entry.title} — Interview Prep Guide`;
+          highlightActiveLink();
+          clearStatus();
+          viewer.scrollIntoView({ block: "start", behavior: "smooth" });
+        } catch (error) {
+          console.error(error);
+          setStatus(`Error loading content: ${error.message}`, true);
+        }
+      }
+
+      async function initialize() {
+        try {
+          const response = await fetch(manifestUrl);
+          if (!response.ok) {
+            throw new Error(`Unable to load manifest (${response.status}).`);
+          }
+          manifest = await response.json();
+          buildNav();
+          const requestedSlug = getSlugFromUrl();
+          const fallbackSlug =
+            manifest.default || getAllItems()[0]?.slug || null;
+          if (!fallbackSlug && !requestedSlug) {
+            setStatus("No topics available.", true);
+            return;
+          }
+          const initialSlug = requestedSlug || fallbackSlug;
+          await loadSlug(initialSlug, { replaceHistory: true });
+        } catch (error) {
+          console.error(error);
+          setStatus(`Failed to initialize: ${error.message}`, true);
+        }
+      }
+
+      window.addEventListener("popstate", (event) => {
+        const slug = event.state?.slug || getSlugFromUrl() || manifest?.default;
+        if (slug && slug !== currentSlug) {
+          loadSlug(slug, { replaceHistory: true });
+        }
+      });
+
+      initialize();
+    </script>
+  </body>
+</html>

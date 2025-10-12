@@ -1,0 +1,13 @@
+{
+  "tasks": [
+    {
+      "id": "T-0000",
+      "title": "Project bootstrap",
+      "labels": ["setup"],
+      "state": "PR Open",
+      "outputs": {},
+      "verified_at": null,
+      "verified_by": null
+    }
+  ]
+}
