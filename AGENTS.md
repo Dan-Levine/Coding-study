@@ -1,264 +1,271 @@
-# agents.md — Codex-Ready Operations Guide
+# agents.md — Codex-Web Automation & Verification
 
-## Purpose
-Define how human maintainers and OpenAI Codex collaborate on this repo (Interview Prep Guide: LaTeX.js + GitHub Pages) with **verification-first** rules to avoid hallucinations and ensure only true, merged outcomes are recorded.
-
----
-
-## Safety & Verification Rules (Read First)
-1. Source of truth = repo `main` branch. Never trust Codex output blindly.
-2. A task is “Done” only after:
-   - The PR is merged into `main`.
-   - Post-merge verification passes (see “Verification Playbook”).
-3. Task list updates must reflect **observed repo state** (files, JSON, links) — not intentions or draft PRs.
-4. Codex must include diffs, file paths, and reasons in PR descriptions; humans verify line-by-line.
-5. If any verification step fails, revert task status to “Blocked” and open/annotate an issue.
+This repo uses **Codex Web** as the primary automation and CI agent.  
+Codex is authorized to **create branches, push commits, and open pull requests automatically**.  
+Human maintainers review, verify, and merge only after successful validation.
 
 ---
 
-## Roles
+## Global Rules
+
+1. **Single source of truth:** `main` branch.  
+2. **No direct commits to `main`.**  
+   Codex must always use a feature/fix/verify branch and open a PR.  
+3. **Task lifecycle:**  
+   `Proposed → In Progress → PR Open → Merged → Verified → Done`.  
+4. **Verification-first policy:**  
+   A task is not “Done” until PR is merged **and** verified per the “Verification Playbook.”  
+5. **Anti-hallucination rule:**  
+   - PRs must list all affected file paths and diffs.  
+   - Codex must verify file existence and repo structure before claiming success.  
+   - If verification fails, Codex must set the task to `Blocked` and create a new issue summarizing what failed.
+
+---
+
+## GitHub Permissions & Behavior
+
+- **Required permissions:**  
+  - Read/write access to this repository only.  
+  - Ability to create branches and pull requests.  
+- **Automatic PR behavior:**  
+  - Codex Web creates a new branch for each change.  
+  - PR title and description are generated from the task metadata.  
+  - Maintainers receive the PR ready for review—no manual PR creation required.
+
+---
+
+## Branching & PR Conventions
+
+- **Feature branches:** `feat/<area>-<slug>`  
+- **Fix branches:** `fix/<area>-<slug>`  
+- **Verification branches:** `verify/<task-id>`  
+
+**PR Title Format**
+```
+<type>: <concise change summary>
+```
+
+**Standard PR Checklist (auto-filled by Codex):**
+- [ ] Clear summary and intent  
+- [ ] List of all changed file paths  
+- [ ] Verification notes or logs  
+- [ ] Risks or side effects  
+- [ ] Next steps or follow-ups  
+- [ ] No direct modification to `tasks/tasks.json` (except in verification PRs)
+
+---
+
+## Agent Roles & Auto-PR Templates
 
 ### 🧠 ContentAgent (Codex)
-Goal: Create or revise `.tex` files.
+**Goal:** Add or modify `.tex` files for new content.
 
-Responsibilities:
-- Generate topic outlines and produce valid LaTeX (`.tex`) without external packages.
-- Keep structure simple so LaTeX.js renders cleanly.
-- Add entries to manifest only after verifying file presence.
+**Codex Task Template**
+```
+Repo: <owner>/<repo> (branch: main)
+Task: Add or update topic "<title>" as tex/<slug>.tex.
+Actions:
+1. Create branch feat/content-<slug>.
+2. Add tex/<slug>.tex (valid LaTeX.js, minimal packages).
+3. Validate file creation and include expected sections.
+4. Open PR with:
+   - File path summary
+   - Render expectations
+   - No manifest edits (handled by NavAgent)
+```
 
-Default trigger:
-- Label: `content`.
-- Issue comment: `@codex content: add <topic> with outline <...>`.
-
-Required outputs (PR):
-- New/updated `tex/*.tex` with clear sections.
-- PR description: list of files, snippets, and rendered expectations.
-
-Verification gates (human + TestAgent):
-- Check `.tex` compiles in LaTeX.js (via headless test).
-- Confirm `tex/index.json` maps to the new file and routing works.
+**Outputs:**
+- New `.tex` file(s)
+- Screenshots/logs if rendering tested
 
 ---
 
 ### 🧩 NavAgent (Codex + Python)
-Goal: Maintain navigation and search indices.
+**Goal:** Maintain navigation and search index.
 
-Responsibilities:
-- Run `tools/build.py` to regenerate `tex/index.json` and `assets/search.json`.
-- Respect alphabetical/grouping logic; keep slugs stable.
+**Codex Task Template**
+```
+Repo: <owner>/<repo>
+Task: Regenerate nav/search manifests.
+Actions:
+1. Create branch feat/nav-rebuild.
+2. Run python tools/build.py.
+3. Commit tex/index.json and assets/search.json if changed.
+4. Open PR "chore: rebuild nav/search" with:
+   - Diff summary
+   - Added/removed slugs
+   - Validation output (manifest keys)
+```
 
-Default trigger:
-- Label: `navigation`.
-- Issue comment: `@codex nav: rebuild manifest`.
-
-Required outputs (PR):
-- Updated `tex/index.json`, `assets/search.json`.
-- PR description includes a diff summary and a list of discovered `.tex` files.
-
-Verification gates:
-- Ensure all `path` entries exist and 200-OK via local server or Pages preview.
-- Confirm default slug loads content in browser.
+**Outputs:**
+- Updated `tex/index.json`
+- Updated `assets/search.json`
+- Log summary
 
 ---
 
 ### 🧪 TestAgent (Codex)
-Goal: Validate site integrity.
+**Goal:** Validate LaTeX.js rendering and JSON integrity.
 
-Responsibilities:
-- Headless render test of `index.html`:
-  - Confirm LaTeX.js loads from CDN.
-  - Render at least the default slug and one non-default.
-  - Capture console errors (fail on CSP/CORS/404).
-- Link/layout smoke check:
-  - Sidebar builds from `tex/index.json`.
-  - Route switch updates active state and content.
+**Codex Task Template**
+```
+Repo: <owner>/<repo>
+Task: Perform headless smoke test.
+Actions:
+1. Create branch feat/test-smoke.
+2. Add scripts/smoke.md describing test results.
+3. Validate index.html load (default + another slug).
+4. Log console errors and screenshot (if supported).
+5. Open PR "test: smoke verification" with logs.
+```
 
-Default trigger:
-- Label: `test`.
-- Issue comment: `@codex test: headless smoke`.
-
-Required outputs (PR or CI log):
-- Test script and artifacts (screenshots/logs) attached or linked.
-- A pass/fail summary with actionable errors.
-
-Verification gates:
-- Maintainer reviews logs and artifacts.
-- Re-run locally if needed.
+**Outputs:**
+- Test report or markdown file with logs
+- PR includes a clear pass/fail summary
 
 ---
 
 ### 🐍 PyAgent (Codex)
-Goal: Improve Python tooling and CI.
+**Goal:** Improve or validate Python automation.
 
-Responsibilities:
-- Extend `tools/build.py` (perf, robustness).
-- Add linters or pre-commit hooks (optional).
+**Codex Task Template**
+```
+Repo: <owner>/<repo>
+Task: Improve Python tooling and CI checks.
+Actions:
+1. Create branch feat/py-updates.
+2. Edit tools/build.py for error handling, validation, etc.
+3. Update .github/workflows/build.yml to fail on invalid JSON.
+4. Run test build and include logs in PR.
+5. Open PR "feat: improve build.py validation".
+```
 
-Default trigger:
-- Label: `python`.
-- Issue comment: `@codex python: enhance build tooling`.
-
-Required outputs:
-- Updated scripts and documentation with examples.
-
-Verification gates:
-- CI run green; no breaking changes to JSON schema.
-
----
-
-### 🤝 Maintainers (Human)
-- Define tasks/issues precisely.
-- Enforce verification before “Done”.
-- Merge PRs only when checklists pass.
+**Outputs:**
+- Updated tooling
+- Verified CI pipeline logs
 
 ---
 
-## Task Lifecycle
+## Task Registry (`tasks/tasks.json`)
 
-States:
-- `Proposed` → `In Progress` → `PR Open` → `Merged` → `Verified` → `Done`
-- On failure: `Blocked` (link to failing step/log).
+Only **Codex (via verification PR)** or human maintainers may edit this file.
 
-Tasks registry (machine-readable):
-- File: `tasks/tasks.json`
-- Schema:
-
-    {
-      "tasks": [
-        {
-          "id": "T-0001",
-          "title": "Add DP cheatsheet",
-          "labels": ["content"],
-          "state": "Verified",
-          "issue": 42,
-          "pr": 101,
-          "outputs": {
-            "files": ["tex/dynamic-programming.tex"],
-            "manifest_entries": ["dynamic-programming"],
-            "screenshots": ["artifacts/dp.png"]
-          },
-          "verified_at": "2025-10-12T15:30:00Z",
-          "verified_by": "maintainer_github_handle"
-        }
-      ]
-    }
-
-Update policy:
-- Only Codex (via PR) or maintainers may change `tasks/tasks.json`.
-- `state` can move to `Done` **only after** post-merge verification (“Verification Playbook”) and must include `verified_at` and `verified_by`.
+Each entry:
+```json
+{
+  "id": "T-0001",
+  "title": "Add Algorithms Section",
+  "labels": ["content"],
+  "state": "Verified",
+  "issue": 7,
+  "pr": 12,
+  "outputs": {
+    "files": ["tex/algorithms.tex"],
+    "manifest_entries": ["algorithms"]
+  },
+  "verified_at": "2025-10-12T15:30:00Z",
+  "verified_by": "maintainer_handle"
+}
+```
 
 ---
 
-## Verification Playbook (Post-Merge)
+## Verification Playbook (Mandatory After Merge)
 
-1) Files present
-   - Confirm new/changed files exist on `main`:
-     - `tex/*.tex` present.
-     - `tex/index.json` and `assets/search.json` updated if nav changed.
-
-2) Headless render (local)
-   - Serve repo root (e.g., `python -m http.server 8080`) and open:
-     - `http://localhost:8080/index.html?file=<default>`
-     - Another slug: `... ?file=<other>`
-   - Ensure no console errors; content renders.
-
-3) Navigation & Routing
-   - Sidebar entries correspond to `tex/index.json`.
-   - Active state and URL update correctly.
-
-4) Pages publish check
-   - If Pages is enabled: visit the public URL for same checks.
-
-5) Record result
-   - Update `tasks/tasks.json` with state `Verified` → `Done` (with timestamp/user).
-   - If any step fails: set `Blocked`, open/annotate issue with logs and steps to reproduce.
+1. **File Presence**
+   - Check that all new/edited files exist on `main`.
+2. **JSON Validation**
+   - Run:
+     ```
+     python -m json.tool tex/index.json
+     python -m json.tool assets/search.json
+     ```
+3. **Render Sanity**
+   - Serve locally (`python -m http.server 8080`)
+   - Open:
+     - `index.html?file=<default>`
+     - `index.html?file=<slug>`
+   - Confirm no console errors.
+4. **GitHub Pages Test**
+   - Confirm same results at live URL.
+5. **Verification PR**
+   - Codex opens `verify/<task-id>` PR.
+   - Updates `tasks/tasks.json` → state “Done” with evidence.
 
 ---
 
-## Codex Command Templates (Issue Comments)
+## CI Guardrails
 
-Content (new topic):
-- `@codex content: add "Binary Search Tree Guide" with sections: intro, invariants, insert/delete, traversal, complexity table. Produce tex/bst.tex and propose a short summary for search.json. Do not update tasks until PR is merged.`
-
-Navigation rebuild:
-- `@codex nav: rebuild manifest and search index via tools/build.py. If changes detected, open PR with a diff summary. Do not change tasks/tasks.json.`
-
-Headless smoke test:
-- `@codex test: run headless render of index.html for default and "graphs" slugs; attach screenshots and console logs; fail on any network/CSP/404. No tasks update.`
-
-Python tooling:
-- `@codex python: add simple link checker and wire into TestAgent flow; output CI annotations on broken paths. Do not alter tasks/tasks.json.`
-
-Important guardrails for every Codex task:
-- Always include changed file list and exact paths in PR description.
-- Never update `tasks/tasks.json` in the same PR that adds code/content.
-- After merge, create a follow-up PR solely to move tasks to `Verified/Done` with evidence links.
+- Workflow: `.github/workflows/build.yml`
+  - Regenerate `index.json` and `search.json`
+  - Validate JSON structure
+  - Fail on missing files or schema mismatch
+- Future checks:
+  - Dead link detection
+  - CSP verification
+  - Automated smoke render
 
 ---
 
-## Labels & Branching
+## Codex Web Command Library
 
-Labels:
-- `content`, `navigation`, `test`, `python`, `blocked`, `needs-verification`
+**Bootstrap Project**
+```
+Initialize full LaTeX.js site.
+- Create: index.html, assets/site.css, tex/example.tex, tools/build.py, tasks/tasks.json, .github/workflows/build.yml, agents.md
+- Ensure python tools/build.py runs and generates tex/index.json + assets/search.json
+- Open PR: "feat: bootstrap project"
+```
 
-Branches:
-- Feature: `feat/<area>-<slug>`
-- Fix: `fix/<area>-<slug>`
-- Verification PRs: `verify/<task-id>`
+**Add New Topic**
+```
+Add new LaTeX topic "Dynamic Programming Overview".
+- Branch: feat/content-dp
+- Generate tex/dynamic-programming.tex
+- Open PR: "feat: add DP overview" with checklist and expected render
+```
 
----
+**Rebuild Nav**
+```
+Regenerate nav/search indexes after new topics.
+- Branch: feat/nav-rebuild
+- Run python tools/build.py
+- Open PR: "chore: rebuild nav"
+```
 
-## PR Checklist (paste into PR templates)
-
-- [ ] Lists all changed files with full paths.
-- [ ] For content: `.tex` renders in LaTeX.js locally (screenshot or log attached).
-- [ ] For nav: `tools/build.py` rerun; `tex/index.json` and `assets/search.json` updated.
-- [ ] No broken links; no console errors (attach logs).
-- [ ] No changes to `tasks/tasks.json` in this PR (unless this is a verification PR).
-
-Verification PR (after merge of feature PR):
-- [ ] References merged commit/PR IDs.
-- [ ] Confirms checks from “Verification Playbook” passed.
-- [ ] Updates `tasks/tasks.json` with `Verified` → `Done`, `verified_at`, `verified_by`.
-
----
-
-## Minimal File Map
-
-- `index.html` — SPA shell with LaTeX.js web component, sidebar + content pane.
-- `assets/site.css` — layout & typography.
-- `assets/search.json` — optional simple search index (generated).
-- `tex/*.tex` — content sources.
-- `tex/index.json` — nav/route manifest (generated).
-- `tools/build.py` — Python manifest/search generator.
-- `.github/workflows/build.yml` — rebuild manifest on push.
-- `tasks/tasks.json` — single source of truth for task states (never optimistic).
+**Verify Task**
+```
+Verification for T-0001.
+- Branch: verify/T-0001
+- Confirm merged PR, JSON validity, and rendering
+- Update tasks/tasks.json → Done
+- Open PR: "verify: T-0001 complete"
+```
 
 ---
 
-## Common Hallucinations & Mitigations
+## Hallucination Safeguards
 
-Pitfall: Claims that files exist or tests passed without artifacts.
-- Mitigation: Require file path list, artifacts, and reproducible steps.
-
-Pitfall: Editing `tasks/tasks.json` before merge.
-- Mitigation: Block PRs that change `tasks/tasks.json` unless it’s a verification PR.
-
-Pitfall: Incorrect LaTeX packages or commands unsupported by LaTeX.js.
-- Mitigation: Keep LaTeX minimal; maintain a known-good snippet library.
-
-Pitfall: “Updated nav” without running `tools/build.py`.
-- Mitigation: CI job compares manifest to directory listing; fails on mismatch.
+| Risk | Mitigation |
+|------|-------------|
+| Claimed file creation without evidence | Require file path list + diff in PR |
+| Updating tasks prematurely | Block edits to `tasks/tasks.json` except in verification PRs |
+| Manifest not regenerated | CI check compares `tex/` vs `tex/index.json` |
+| LaTeX incompatibility | Maintain approved LaTeX subset (no heavy packages) |
+| Missing logs | Codex must attach or inline logs before PR submission |
 
 ---
 
-## Human Review Tips
-- Skim diffs in `tex/` for clarity and compile-ability.
-- Open devtools console during local run; errors = stop the merge.
-- Verify routing by clicking multiple sidebar links.
-- Defend stable slugs; changing slugs breaks links.
+## Human Maintainer Duties
+
+- Review PRs for:
+  - Structural correctness
+  - JSON validity
+  - Rendered LaTeX sanity
+- Merge only verified PRs.
+- Oversee Codex’s adherence to branch & PR conventions.
+- Approve verification PRs when all checks pass.
 
 ---
 
-Last updated: 2025-10-12
-```0
+_Last updated: 2025-10-12_
