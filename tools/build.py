@@ -90,7 +90,8 @@ def generate_indices() -> None:
 
     entries: List[Tuple[str, Dict[str, str]]] = []
     search_entries: List[Dict[str, str]] = []
-    timestamp = datetime.now(timezone.utc).isoformat()
+    latest_mtime = max(tex_path.stat().st_mtime for tex_path in tex_files)
+    timestamp = datetime.fromtimestamp(latest_mtime, tz=timezone.utc).isoformat()
 
     for tex_path in tex_files:
         content = tex_path.read_text(encoding="utf-8")
@@ -132,8 +133,14 @@ def generate_indices() -> None:
         "entries": sorted(search_entries, key=lambda entry: entry["title"].lower()),
     }
 
-    INDEX_PATH.write_text(json.dumps(index_payload, indent=2) + "\n", encoding="utf-8")
-    SEARCH_PATH.write_text(json.dumps(search_payload, indent=2) + "\n", encoding="utf-8")
+    def write_if_changed(path: Path, payload: Dict[str, object]) -> None:
+        serialized = json.dumps(payload, indent=2) + "\n"
+        if path.exists() and path.read_text(encoding="utf-8") == serialized:
+            return
+        path.write_text(serialized, encoding="utf-8")
+
+    write_if_changed(INDEX_PATH, index_payload)
+    write_if_changed(SEARCH_PATH, search_payload)
 
     print(f"Discovered {len(tex_files)} LaTeX file(s).")
     for section in sections:
