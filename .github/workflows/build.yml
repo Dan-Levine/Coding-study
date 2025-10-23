@@ -1,0 +1,32 @@
+name: Build manifests
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'tex/**'
+      - 'tools/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Regenerate indices
+        run: python tools/build.py
+      - name: Commit updates
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit"
+          else
+            git config user.name "github-actions"
+            git config user.email "actions@github.com"
+            git add tex/index.json assets/search.json
+            git commit -m "chore: update generated indices"
+            git push
+          fi
